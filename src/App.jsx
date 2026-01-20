@@ -1,17 +1,3 @@
-/**
- * TO DEPLOY ON VERCEL:
- * 1. Create a standard React project (e.g., Vite or Create React App).
- * 2. Ensure your package.json includes:
- * "dependencies": {
- * "react": "^18.0.0",
- * "react-dom": "^18.0.0",
- * "lucide-react": "latest",
- * "firebase": "latest"
- * }
- * 3. Replace environment variable globals (__firebase_config, etc.)
- * with standard process.env or import.meta.env variables.
- */
-
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Plus,
@@ -27,12 +13,14 @@ import {
   ShoppingCart,
   Zap,
   FileText,
+  LogOut,
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
   getAuth,
-  signInWithCustomToken,
-  signInAnonymously,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
   onAuthStateChanged,
 } from "firebase/auth";
 import {
@@ -46,14 +34,12 @@ import {
 } from "firebase/firestore";
 
 // --- Firebase Config & Initialization ---
-// Note: In a local/Vercel build, replace these globals with env vars
 const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG);
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId =
-  typeof __app_id !== "undefined" ? __app_id : "dropship-tracker-app";
+const appId = "dropship-tracker-app";
 
 // --- Constants & Config ---
 const LOCAL_STORAGE_KEY = "dropship_tracker_v1";
@@ -136,31 +122,140 @@ const StatusBadge = ({ status }) => {
   );
 };
 
+// --- Auth Component ---
+const AuthScreen = ({ onAuth }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      if (isLogin) {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        await createUserWithEmailAndPassword(auth, email, password);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="bg-white rounded-2xl shadow-xl p-8 border border-slate-200">
+          <div className="flex items-center justify-center gap-3 mb-8">
+            <div className="w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center text-white">
+              <LayoutGrid size={24} />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">
+              Product Research
+            </h1>
+          </div>
+
+          <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-lg">
+            <button
+              onClick={() => setIsLogin(true)}
+              className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
+                isLogin
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Login
+            </button>
+            <button
+              onClick={() => setIsLogin(false)}
+              className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
+                !isLogin
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Sign Up
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 transition-all"
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 transition-all"
+                placeholder="••••••••"
+                required
+                minLength={6}
+              />
+            </div>
+
+            {error && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white py-2.5 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading
+                ? "Please wait..."
+                : isLogin
+                ? "Login"
+                : "Create Account"}
+            </button>
+          </form>
+
+          <p className="text-xs text-slate-500 mt-6 text-center">
+            Your data is securely stored and encrypted
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [products, setProducts] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [authChecking, setAuthChecking] = useState(true);
 
   // 1. Handle Authentication
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (
-          typeof __initial_auth_token !== "undefined" &&
-          __initial_auth_token
-        ) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (error) {
-        console.error("Auth error:", error);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthChecking(false);
+    });
     return () => unsubscribe();
   }, []);
 
@@ -220,6 +315,14 @@ export default function App() {
 
     return () => unsubscribe();
   }, [user]);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
 
   const handleAddProduct = async () => {
     if (!user) return;
@@ -334,6 +437,22 @@ export default function App() {
 
   const selectedProduct = products.find((p) => p.id === selectedId);
 
+  // Show auth screen if not logged in
+  if (authChecking) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-white text-slate-400 font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin" />
+          <p className="text-sm font-medium animate-pulse">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-white text-slate-400 font-sans">
@@ -368,7 +487,7 @@ export default function App() {
             </span>
             <div className="flex items-center gap-1.5 ml-2 text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
               <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" />
-              Cloud Connected
+              {user.email}
             </div>
           </div>
 
@@ -391,6 +510,13 @@ export default function App() {
               className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-all shadow-sm active:scale-95"
             >
               <Plus size={16} /> New Product
+            </button>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-1.5 rounded-md text-sm font-medium transition-all"
+              title="Logout"
+            >
+              <LogOut size={16} />
             </button>
           </div>
         </header>
@@ -848,10 +974,7 @@ export default function App() {
                 </div>
                 <div className="space-y-2">
                   {(selectedProduct.otherLinks || []).map((link) => (
-                    <div
-                      key={link.id}
-                      className="flex gap-2 items-start animate-in fade-in slide-in-from-right-2 duration-200"
-                    >
+                    <div key={link.id} className="flex gap-2 items-start">
                       <div className="grid grid-cols-3 gap-2 flex-1">
                         <input
                           type="text"
